@@ -30,8 +30,7 @@ definition(
 
 preferences {
 	section("What Garage Door?") {
-		input "contact1", "capability.contactSensor", title: "Open/Closed Sensor"
-		input "opener1", "capability.momentary", title: "Garage Door Button"
+		input "garageDoor", "capability.garageDoorControl", title: "Garage Door"
 	}
 	section("Actions") {
 		input "alertTime", "time", title: "Alert Me at This Time", required: false
@@ -67,7 +66,7 @@ def initialize() {
 }
 
 def checkAndAlert() {
-	def doorOpen = isDoorOpen()
+	def doorOpen = isDoorOpen(checkAndAlert)
 	log.debug "In checkAndAlert - is the door open: $doorOpen"
 	if(doorOpen) {
 		def message = "The garage door is still open!"
@@ -78,27 +77,43 @@ def checkAndAlert() {
 
 def modeChangeHandler(evt) {
 	log.debug "In modeChangeHandler for $evt.name = $evt.value"
-	if(evt.value == closeMode && isDoorOpen()) {
+	if(evt.value == closeMode && isDoorOpen(checkAndClose)) {
 		def message = "Closing garage door since it was left open"
 		log.info message
 		sendNotification(message, [method: "push"])
 
-		opener1.push()
+		garageDoor.close()
 	}
 }
 
 def checkAndClose() {
-	def doorOpen = isDoorOpen()
+	def doorOpen = isDoorOpen(checkAndClose)
 	log.debug "In checkAndClose - is the door open: $doorOpen"
 	if(doorOpen) {
 		def message = "Closing garage door since it was left open past close time"
 		log.info message
 		sendNotification(message, [method: "push"])
 		
-		opener1.push()
+		garageDoor.close()
 	}
 }
 
-def isDoorOpen() {
-	return contact1.latestValue("contact") == "open"
+def isDoorOpen(rescheduleMethod=null) {
+	def doorState = garageDoor.currentState("door")
+	if(doorState?.value == "open") {
+		def thresholdMinutes = 5 //If the door's been open for less than 5 minutes, don't report as open
+		def recheduleDelay = 20 //Given that condition, check again in this number of minutes
+		def doorOpenMs = now() - doorState.date.time
+		if(doorOpenMs > thresholdMinutes * 60 * 1000) {
+			return true
+		} else if(rescheduleMethod != null) {
+			log.debug "Door was opened ${doorOpenMs / (60*1000)} minutes ago, deferring $recheduleDelay minutes"
+			runIn(recheduleDelay*60, rescheduleMethod)
+		} else {
+			def message = "Garage door was opened ${doorOpenMs / (60*1000)} minutes ago, rescheduling not allowed"
+			log.info message
+			sendNotification(message, [method: "push"])
+		}
+	}
+	return false
 }
