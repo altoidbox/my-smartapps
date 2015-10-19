@@ -16,7 +16,8 @@
 /**
  * Double check your garage door. First warn if it is still open, and then always close when switching
  * to a specific mode. For example, send a notification at 8:00 PM if the garage is still open, and
- * then close it when switching to "overnight" mode.
+ * then close it when switching to "overnight" mode. Also supports automatically closing if the door is
+ * left open past a certain time.
  */
 definition(
 		name: "Close Garage Door At Night",
@@ -33,8 +34,9 @@ preferences {
 		input "opener1", "capability.momentary", title: "Garage Door Button"
 	}
 	section("Actions") {
-		input "alertTime", "time", title: "Alert Me At This Time", required: false
+		input "alertTime", "time", title: "Alert Me at This Time", required: false
 		input "closeMode", "mode", title: "Close when switching to this mode", required: false
+		input "closeTime", "time", title: "Close Door at This Time", required: false
 	}
 }
 
@@ -59,6 +61,9 @@ def initialize() {
 	if(alertTime) {
 		runDaily(alertTime, "checkAndAlert")
 	}
+	if(closeTime) {
+		runDaily(closeTime, "checkAndClose")
+	}
 }
 
 def checkAndAlert() {
@@ -78,6 +83,18 @@ def modeChangeHandler(evt) {
 		log.info message
 		sendNotification(message, [method: "push"])
 
+		opener1.push()
+	}
+}
+
+def checkAndClose() {
+	def doorOpen = isDoorOpen()
+	log.debug "In checkAndClose - is the door open: $doorOpen"
+	if(doorOpen) {
+		def message = "Closing garage door since it was left open past close time"
+		log.info message
+		sendNotification(message, [method: "push"])
+		
 		opener1.push()
 	}
 }
